@@ -64,10 +64,14 @@ prepare_bundle() {
   require_cmd go
 
   cd "$ROOT_DIR"
+  local app_env="pre"
+  if [[ "$BUILD_MODE" == "release" ]]; then
+    app_env="stable"
+  fi
   flutter pub get
   dart run build_runner build -d
   dart ./setup.dart linux --arch "$CORE_ARCH" --out core
-  flutter build linux "--$BUILD_MODE"
+  flutter build linux "--$BUILD_MODE" "--dart-define=APP_ENV=$app_env"
 
   BUNDLE_DIR="$ROOT_DIR/build/linux/$FLUTTER_ARCH/$BUILD_MODE/bundle"
   if [[ ! -x "$BUNDLE_DIR/$APP_NAME" ]]; then
@@ -82,7 +86,16 @@ install_tree() {
   install -dm755 "$dest/opt/$PACKAGE_NAME" "$dest/usr/bin" "$dest/usr/share/applications" "$dest/usr/share/pixmaps"
   cp -a "$BUNDLE_DIR/." "$dest/opt/$PACKAGE_NAME/"
   install -Dm644 "$ROOT_DIR/assets/images/icon.png" "$dest/usr/share/pixmaps/$PACKAGE_NAME.png"
-  ln -s "/opt/$PACKAGE_NAME/$APP_NAME" "$dest/usr/bin/$PACKAGE_NAME"
+  cat > "$dest/usr/bin/$PACKAGE_NAME" <<EOF
+#!/usr/bin/env bash
+APP_ROOT="\${APPDIR:-}/opt/$PACKAGE_NAME"
+if [[ ! -x "\$APP_ROOT/$APP_NAME" ]]; then
+  APP_ROOT="/opt/$PACKAGE_NAME"
+fi
+cd "\$APP_ROOT"
+exec "\$APP_ROOT/$APP_NAME" "\$@"
+EOF
+  chmod 755 "$dest/usr/bin/$PACKAGE_NAME"
   cat > "$dest/usr/share/applications/$PACKAGE_NAME.desktop" <<EOF
 [Desktop Entry]
 Type=Application
